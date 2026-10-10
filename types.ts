@@ -37,7 +37,16 @@ export interface ValueEncrypted {
   ciphertext: string; // base64: IV + encrypted data + auth tag
 }
 
-export type Value = string | number | boolean | ValueGenerated | ValueEncrypted;
+// Value stored in an external secret manager, fetched at load time
+export interface ValueReference {
+  kind: "reference";
+  provider: "vault" | "aws-secrets-manager" | "gcp-secret-manager" | "1password";
+  path: string; // secret location in the provider, e.g. "secret/data/db" or "op://vault/item"
+  field?: string; // field inside a multi-field secret; whole secret if omitted
+  version?: string; // pinned secret version; latest if omitted
+}
+
+export type Value = string | number | boolean | ValueGenerated | ValueEncrypted | ValueReference;
 
 // Definition of a single environment variable
 export interface Variable<Environment extends string> {
