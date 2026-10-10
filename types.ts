@@ -14,23 +14,30 @@ export type EnvCondition<Environment extends string> =
   | { in: Environment[]; notIn?: never }
   | { notIn: Environment[]; in?: never };
 
-export interface GenerateBase {
+export interface ValueGeneratedBase {
   seed?: string; // same seed → same value
 }
 
-export interface RandomGen extends GenerateBase {
+export interface RandomGen extends ValueGeneratedBase {
   kind: "random";
   length: number;
   charset?: string; // characters to pick from
 }
 
-export interface UuidGen extends GenerateBase {
+export interface UuidGen extends ValueGeneratedBase {
   kind: "uuid";
 }
 
-export type Generate = RandomGen | UuidGen;
+export type ValueGenerated = RandomGen | UuidGen;
 
-export type Value = string | number | boolean | Generate;
+// Value stored encrypted in the config, decrypted at load time
+export interface ValueEncrypted {
+  kind: "encrypted";
+  algorithm?: "aes-256-gcm"; // "aes-256-gcm" by default
+  ciphertext: string; // base64: IV + encrypted data + auth tag
+}
+
+export type Value = string | number | boolean | ValueGenerated | ValueEncrypted;
 
 // Definition of a single environment variable
 export interface Variable<Environment extends string> {
