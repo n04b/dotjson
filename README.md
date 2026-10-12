@@ -4,6 +4,15 @@ A typed schema for describing environment variables in one place: their types, p
 
 > **Status:** early design. The repo currently contains only the TypeScript types; the validator and loader are not implemented yet — see [TODO.md](TODO.md).
 
+> [!WARNING]
+> **Before you start working with an encrypted config** (planned workflow, the utility is not implemented yet):
+>
+> 1. **Ignore the working file.** Add the unpacked working config and every file the utility exports (e.g. `.env`) to `.gitignore`. They contain decrypted values and must never reach git.
+> 2. **Install the git hooks.** They check that the committed (encrypted) file is up to date and that it is committed on its own, without other files. Hooks run only locally, so the same checks must also run in CI.
+> 3. **Get the key for your environment only.** Store it outside the repository and never commit it. You do not need, and should not have, keys for environments you do not work with.
+> 4. **Unpack before editing.** Unpack the config for your environment and edit only the working file; never edit the encrypted blocks by hand.
+> 5. **Do not bypass the safeguards.** Never use `git commit --no-verify` or `git add -f` on the working file.
+
 ## Example
 
 ```ts
