@@ -18,10 +18,13 @@ export type EnvCondition<Environment extends string> =
 export interface ValueEncrypted {
   kind: "encrypted";
   algorithm?: "aes-256-gcm"; // "aes-256-gcm" by default
-  value: string; // base64: IV + encrypted data + auth tag
+  // base64: IV + encrypted data + auth tag
+  // `state: encrypted` means the value is already encrypted and stored in the blob, value is not needed
+  valueToEncrypt?: string;
   // `pending` if the value is not yet encrypted, e.g. when a config is generated from a template
   // `pending` is default for new variables, and must be set to `encrypted` before the config can be used in production
   state?: "pending" | "encrypted";
+  keyId?: string; // optional key ID for key rotation, if not provided the default key is used
 }
 
 
