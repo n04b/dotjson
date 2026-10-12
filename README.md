@@ -1,8 +1,8 @@
 # loudTSSS
 
-A typed schema for describing environment variables in one place: their types, per-environment values, secrets and metadata.
+Typed environment config in one file: variable types, per-environment values, encrypted secrets and metadata. Secrets stay quiet, errors stay loud.
 
-> **Status:** early design. The repo currently contains only the TypeScript types; the validator and loader are not implemented yet — see [TODO.md](TODO.md).
+> **Status:** early design. The repo currently contains only the TypeScript types ([types.ts](types.ts)); the validator, the loader and the CLI are not implemented yet. See [TODO.md](TODO.md) for the plan.
 
 > [!WARNING]
 > **Before you start working with an encrypted config** (planned workflow, the utility is not implemented yet):
@@ -31,30 +31,36 @@ export const config: Configuration<Env> = {
       values: { development: 3000 },
     },
 
-    LOG_LEVEL: {
-      type: { kind: "enum", values: ["debug", "info", "warn", "error"] },
-      value: "info",
-      values: { development: "debug" },
-      required: false,
+    REQUEST_TIMEOUT: {
+      description: "Timeout for outgoing HTTP requests",
+      type: { kind: "duration" },
+      value: "5s",
+      values: { development: "30s" },
+    },
+
+    WORKERS: {
+      type: { kind: "int", min: 1, max: 64 },
+      value: 4,
+      required: { in: ["production"] },
+    },
+
+    SUPPORT_EMAIL: {
+      type: { kind: "email" },
+      value: "support@example.com",
+      sensitivity: "public",
+      exposure: "client",
     },
 
     DATABASE_URL: {
       description: "Primary Postgres connection string",
-      type: { kind: "url", protocols: ["postgres"] },
+      type: { kind: "string" },
       sensitivity: "secret",
+      exposure: "server",
       group: "database",
       values: {
         development: "postgres://localhost:5432/app",
-        production: { kind: "reference", provider: "vault", path: "secret/data/db", field: "url" },
-      },
-    },
-
-    SESSION_SECRET: {
-      type: { kind: "string", minLength: 32 },
-      sensitivity: "secret",
-      values: {
-        development: { kind: "random", length: 32, seed: "dev" },
-        production: { kind: "encrypted", ciphertext: "q3J0...==" },
+        staging: { kind: "encrypted", state: "pending", valueToEncrypt: "postgres://staging-db:5432/app" },
+        production: { kind: "encrypted", state: "encrypted", keyId: "prod-2026-10" },
       },
     },
   },
@@ -73,21 +79,21 @@ export const config: Configuration<Env> = {
 
 | Field | Description |
 |---|---|
-| `type` | Value type and its constraints (see [Types](#types)) |
+| `type` | Value type and its constraints (see [Types](#types)). Required |
 | `description` | Human-readable description |
 | `value` | Value shared by all environments |
 | `values` | Per-environment overrides; take precedence over `value` |
 | `required` | Whether the variable must be set. Default `true` |
 | `allowEmpty` | Whether `""` is a valid value. Default `false` |
 | `example` | Sample value for `.env.example` and docs |
-| `sensitivity` | `"public"` \| `"internal"` \| `"secret"` |
+| `sensitivity` | `"public"` \| `"internal"` \| `"secret"`. Secrets must be stored encrypted outside local and dev environments |
 | `exposure` | Where the value is available: `"server"` \| `"client"` \| `"build"` |
 | `group` | Grouping for UI and docs, e.g. `"database"` |
 | `tags` | Free-form tags |
 | `aliases` | Old names kept after a rename |
 | `deprecated` | `{ since?, replacedBy?, message? }` |
 
-`required` and `allowEmpty` accept either a boolean or an environment condition:
+`required` and `allowEmpty` accept either a boolean or an environment condition, an allowlist (`in`) or a denylist (`notIn`), never both:
 
 ```ts
 required: { in: ["production"] }        // required only in production
@@ -96,20 +102,47 @@ allowEmpty: { notIn: ["production"] }   // empty allowed everywhere except produ
 
 ## Types
 
-| `kind` | Options |
-|---|---|
-| `string` | `minLength`, `maxLength`, `pattern` (JS RegExp, full match, `u` flag), `startsWith` |
-| `int`, `float` | `min`, `max` |
-| `bool` | — |
-| `enum` | `values`, `ignoreCase` (case-sensitive by default) |
-| `url` | `protocols`, e.g. `["https", "postgres"]` |
-| `email`, `port`, `duration`, `host` | — |
-| `list` | `of` (scalar kind), `separator` — e.g. `"a,b,c"` |
+| `kind` | Options | Value |
+|---|---|---|
+| `string` | — | any string |
+| `int`, `float` | `min`, `max` | number |
+| `bool` | — | boolean |
+| `port` | — | number from 1 to 65535 |
+| `duration` | — | Go duration string, e.g. `"5s"`, `"1h"` |
+| `email`, `host` | — | string |
 
 ## Values
 
-A value is either a literal (`string`, `number`, `boolean`) or one of:
+A value is either a literal (`string`, `number`, `boolean`) or an encrypted value.
 
-- **Generated**: `{ kind: "random", length, charset? }` or `{ kind: "uuid" }`. An optional `seed` makes the result deterministic.
-- **Encrypted**: `{ kind: "encrypted", ciphertext, algorithm? }`. `ciphertext` is base64 of IV + encrypted data + auth tag; the algorithm defaults to `aes-256-gcm`.
-- **Reference**: `{ kind: "reference", provider, path, field?, version? }`. The value lives in an external secret manager (`vault`, `aws-secrets-manager`, `gcp-secret-manager`, `1password`).
+An encrypted value is `{ kind: "encrypted", state, algorithm?, keyId? }`:
+
+| Field | Description |
+|---|---|
+| `state` | `"encrypted"`: the value is already encrypted and stored in the environment's encrypted block, so the entry carries no value. `"pending"`: the value is still plaintext in `valueToEncrypt` and will be encrypted on the next run |
+| `valueToEncrypt` | Plaintext to encrypt; only with `state: "pending"` |
+| `algorithm` | `"aes-256-gcm"`, the default and currently the only option |
+| `keyId` | Key used for this value, for key rotation; the default key if omitted |
+
+`state` has no default, so an entry without it is never mistaken for plaintext.
+
+## Encryption (planned)
+
+The config exists in two forms:
+
+- **Committed file**, stored in git: the schema (variables with their metadata, without values) plus one encrypted block per environment. A block holds **all** values of its environment, public and secret, and is encrypted with that environment's key. Nobody can swap, remove or replace a value without the key.
+- **Working file**, ignored by git: the config unpacked for one environment. Non-secret values are decrypted into place; secrets stay in the block and appear as `{ kind: "encrypted", state: "encrypted" }`.
+
+To add a secret by hand, write it into the working file as `{ kind: "encrypted", state: "pending", valueToEncrypt: "..." }`. The utility moves it into the block and replaces the entry with `{ kind: "encrypted", state: "encrypted" }`.
+
+The key model (symmetric or asymmetric keys, delivery, rotation) and rollback protection are still open questions; see [TODO.md](TODO.md#encryption).
+
+## Planned
+
+Not in [types.ts](types.ts) yet; see [TODO.md](TODO.md):
+
+- **More types:** `enum` (`values`, `ignoreCase`), `url` (`protocols`), `list` (`of`, `separator`), and `string` constraints (`minLength`, `maxLength`, `pattern`, `startsWith`).
+- **Generated values:** `{ kind: "random", length, charset? }` and `{ kind: "uuid" }`, with an optional `seed` for a deterministic result.
+- **References:** `{ kind: "reference", provider, path, field?, version? }` for values stored in an external secret manager (`vault`, `aws-secrets-manager`, `gcp-secret-manager`, `1password`).
+- **Utility:** a CLI and a Docker image (an init container that fetches and decrypts the config before other containers start), import from and export to `.env`, key generation and rotation.
+- **Docs:** [generating environment variables in Docker Compose](docs/docker-compose-env-generation.md).
