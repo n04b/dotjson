@@ -14,21 +14,21 @@ export type EnvCondition<Environment extends string> =
   | { in: Environment[]; notIn?: never }
   | { notIn: Environment[]; in?: never };
 
-export interface ValueGeneratedBase {
-  seed?: string; // same seed → same value
-}
+// export interface ValueGeneratedBase {
+//   seed?: string; // same seed → same value
+// }
 
-export interface RandomGen extends ValueGeneratedBase {
-  kind: "random";
-  length: number;
-  charset?: string; // characters to pick from
-}
+// export interface RandomGen extends ValueGeneratedBase {
+//   kind: "random";
+//   length: number;
+//   charset?: string; // characters to pick from
+// }
 
-export interface UuidGen extends ValueGeneratedBase {
-  kind: "uuid";
-}
+// export interface UuidGen extends ValueGeneratedBase {
+//   kind: "uuid";
+// }
 
-export type ValueGenerated = RandomGen | UuidGen;
+// export type ValueGenerated = RandomGen | UuidGen;
 
 // Value stored encrypted in the config, decrypted at load time
 export interface ValueEncrypted {
@@ -38,15 +38,15 @@ export interface ValueEncrypted {
 }
 
 // Value stored in an external secret manager, fetched at load time
-export interface ValueReference {
-  kind: "reference";
-  provider: "vault" | "aws-secrets-manager" | "gcp-secret-manager" | "1password";
-  path: string; // secret location in the provider, e.g. "secret/data/db" or "op://vault/item"
-  field?: string; // field inside a multi-field secret; whole secret if omitted
-  version?: string; // pinned secret version; latest if omitted
-}
+// export interface ValueReference {
+//   kind: "reference";
+//   provider: "vault" | "aws-secrets-manager" | "gcp-secret-manager" | "1password";
+//   path: string; // secret location in the provider, e.g. "secret/data/db" or "op://vault/item"
+//   field?: string; // field inside a multi-field secret; whole secret if omitted
+//   version?: string; // pinned secret version; latest if omitted
+// }
 
-export type Value = string | number | boolean | ValueGenerated | ValueEncrypted | ValueReference;
+export type Value = string | number | boolean | ValueEncrypted;
 
 // Definition of a single environment variable
 export interface Variable<Environment extends string> {
