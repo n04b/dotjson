@@ -1,50 +1,29 @@
 export type ScalarKind = "string" | "int" | "float" | "url" | "email" | "host";
 
 export type VarType =
-  | { kind: "string"; minLength?: number; maxLength?: number; pattern?: string; startsWith?: string } // pattern follows JS RegExp syntax, must match the whole value, "u" flag
+  | { kind: "string" }
   | { kind: "int" | "float"; min?: number; max?: number }
   | { kind: "bool" }
-  | { kind: "enum"; values: string[]; ignoreCase?: boolean } // case-sensitive by default
-  | { kind: "url"; protocols?: string[] } // ["https", "postgres"]
-  | { kind: "email" | "port" | "duration" | "host" }
-  | { kind: "list"; of: ScalarKind; separator?: string }; // "a,b,c"
+  // "port" is a number between 1 and 65535
+  // "duration" is a string like "5s", "1h", etc. (Golang Duration String)
+  | { kind: "email" | "port" | "duration" | "host" };
 
 // Restricts a rule to a set of environments: either an allowlist or a denylist, never both
 export type EnvCondition<Environment extends string> =
   | { in: Environment[]; notIn?: never }
   | { notIn: Environment[]; in?: never };
 
-// export interface ValueGeneratedBase {
-//   seed?: string; // same seed → same value
-// }
-
-// export interface RandomGen extends ValueGeneratedBase {
-//   kind: "random";
-//   length: number;
-//   charset?: string; // characters to pick from
-// }
-
-// export interface UuidGen extends ValueGeneratedBase {
-//   kind: "uuid";
-// }
-
-// export type ValueGenerated = RandomGen | UuidGen;
 
 // Value stored encrypted in the config, decrypted at load time
 export interface ValueEncrypted {
   kind: "encrypted";
   algorithm?: "aes-256-gcm"; // "aes-256-gcm" by default
-  ciphertext: string; // base64: IV + encrypted data + auth tag
+  value: string; // base64: IV + encrypted data + auth tag
+  // `pending` if the value is not yet encrypted, e.g. when a config is generated from a template
+  // `pending` is default for new variables, and must be set to `encrypted` before the config can be used in production
+  state?: "pending" | "encrypted";
 }
 
-// Value stored in an external secret manager, fetched at load time
-// export interface ValueReference {
-//   kind: "reference";
-//   provider: "vault" | "aws-secrets-manager" | "gcp-secret-manager" | "1password";
-//   path: string; // secret location in the provider, e.g. "secret/data/db" or "op://vault/item"
-//   field?: string; // field inside a multi-field secret; whole secret if omitted
-//   version?: string; // pinned secret version; latest if omitted
-// }
 
 export type Value = string | number | boolean | ValueEncrypted;
 
@@ -69,6 +48,8 @@ export interface Variable<Environment extends string> {
 
   example?: string; // for .env.example and docs
 
+  // All "secrets" (sensitive values) must be stored encrypted in the config, and decrypted at load time.
+  // Non local, test or dev environments should never have secrets in plaintext and utility should warn and/or fail if it detects plaintext secrets in those environments.
   sensitivity?: "public" | "internal" | "secret";
   exposure?: "server" | "client" | "build";
 
@@ -81,5 +62,5 @@ export interface Variable<Environment extends string> {
 export type Configuration<Environment extends string> = {
   version: 1;
   environments: readonly Environment[];
-  variables: Record<string, Variable<Environment>>;  // keyed by variable name
+  variables: Record<string, Variable<Environment>>; // keyed by variable name
 }

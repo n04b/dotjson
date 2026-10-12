@@ -2,6 +2,7 @@
 
 - [ ] In strict mode the fields `description`, `type`, `value`/`values`, `required`, `allowEmpty`, `sensitivity`, `exposure` are mandatory.
 - [ ] Add `value` `kind` concordance type check.
+- [ ] Different encryption keys for different environments 
 
 ## Runtime checks
 
@@ -15,8 +16,19 @@ Taking all decisions into account, the validator needs to check:
 - [ ] `seed` on a variable with `sensitivity: "secret"` is an error;
 - [ ] `sensitivity: "secret"` together with `exposure: "client"` is an error;
 - [ ] in strict mode all mandatory fields are set.
+- [ ] all "secrets" (sensitive values) must be stored encrypted in the config, and decrypted at load time.
 
-# Types
+## Utility
+
+- [ ] Import: extract variables and values from an existing `.env` file into the config.
+- [ ] Export: unpack the config and decrypt secrets into a `.env` file.
+- [ ] Export secrets to GitHub Actions secrets and other services.
+- [ ] Generate encryption keys.
+- [ ] Encrypt secrets in the config.
+- [ ] Two distributions: a CLI utility and a Docker image.
+  - [ ] The Docker image works as an init container: it pulls the latest config with encrypted secrets from git and unpacks/decrypts it; other containers depend on it and start only after it finishes.
+
+## Types
 
 - [ ] Implement refrence values
 ```Typescript
@@ -46,4 +58,18 @@ kind: "uuid";
 }
 
 export type ValueGenerated = RandomGen | UuidGen;
+```
+
+- [ ] Implement additional VarType kinds
+```Typescript
+type VarType =
+  | { kind: "enum"; values: string[]; ignoreCase?: boolean } // case-sensitive by default
+  | { kind: "url"; protocols?: string[] } // ["https", "postgres"]
+  | { kind: "list"; of: ScalarKind; separator?: string }; // "a,b,c"
+```
+
+- [ ] Implement additional `string` VarType properties
+```Typescript
+export type VarType =
+  | { kind: "string"; minLength?: number; maxLength?: number; pattern?: string; startsWith?: string } // pattern follows JS RegExp syntax, must match the whole value, "u" flag
 ```
