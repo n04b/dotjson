@@ -1,4 +1,4 @@
-# dotjson
+# loudTSSS
 
 A typed schema for describing environment variables in one place: their types, per-environment values, secrets and metadata.
 

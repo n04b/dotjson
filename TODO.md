@@ -49,7 +49,7 @@ Taking all decisions into account, the validator needs to check:
   ```
   - Unpacking for an environment decrypts only that environment's block; the other blocks stay untouched.
   - AES-GCM over the whole block protects every value of the environment: values cannot be swapped, removed or replaced with plaintext without the environment key.
-  - AAD of each block: `JSON.stringify(["dotjson/1", environment])`, so a block cannot be moved to another environment.
+  - AAD of each block: `JSON.stringify(["loud-t-s-s-s/1", environment])`, so a block cannot be moved to another environment.
 - [ ] A git hook builds the committed file from the working file. The working file never reaches git because it is ignored.
 - [ ] The committed file must always be committed on its own: the hook rejects a commit that contains it together with other files.
 - [ ] Re-encrypt a block only if its content changed (compare with the decrypted block from `HEAD`), so unchanged blocks keep the same ciphertext and do not show up in diffs.
@@ -78,7 +78,7 @@ Taking all decisions into account, the validator needs to check:
 
 - [ ] Asymmetric keys (preferred direction): encrypt with an environment's public key, decrypt only with its private key, so people can add secrets without being able to read them. Anyone with the public key can then forge values, so blocks must also be signed.
 - [ ] How keys are identified (`keyId`), stored and delivered to the CLI and the init container.
-- [ ] Rollback protection: store a `version` counter inside each block; decide where the trusted "latest version" comes from (`DOTJSON_MIN_VERSION` in the deployment, a pinned signed tag, state on a volume, `expiresAt`).
+- [ ] Rollback protection: store a `version` counter inside each block; decide where the trusted "latest version" comes from (`LOUD_T_S_S_S_MIN_VERSION` in the deployment, a pinned signed tag, state on a volume, `expiresAt`).
 - [ ] Shared `value` of a secret: it is expanded per environment and encrypted into each environment's block; how to handle adding a new environment and keeping the copies in sync.
 - [ ] Storage of the encrypted blocks is configurable; git is one option, not a requirement (see also "Download config from alternative resources" under Utility). **MVP: git only**, with blocks stored inline in the committed file; other backends and references come after the MVP. Think this through carefully:
   - the schema and the blocks can be stored separately: instead of an inline block, the config holds a reference to where the block lives, e.g.

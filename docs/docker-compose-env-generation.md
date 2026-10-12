@@ -107,7 +107,7 @@ services:
 | Shared between services | Yes, every service that mounts the directory | No, each container has its own value |
 | Suitable for | Database credentials and anything that must stay stable to keep data accessible | Session, cache or JWT signing keys that can be reset on restart, single replica only |
 
-## Implications for dotjson
+## Implications for loudTSSS
 
 The planned Docker image ([TODO.md](../TODO.md), *Utility*) follows the Option 1 pattern: an init container that produces the decrypted values, with other services depending on it through `condition: service_completed_successfully`. The pitfalls above apply directly:
 
