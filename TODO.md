@@ -33,30 +33,66 @@ Taking all decisions into account, the validator needs to check:
 
 ## Encryption
 
-> **Undecided.** The key model (shared key vs per-environment keys) and the overall encryption architecture are not settled yet; the items below may change. Still thinking through the design and its potential problems.
+> **Partly decided.** The architecture below is chosen; the open questions at the end are still being thought through.
 
-Open questions:
-- [ ] Is a shared key needed at all, or are per-environment keys enough? Per-environment keys plus AAD and seals cover tampering; the shared key only adds hiding the config structure, at the cost of unreadable diffs, harder merges and one more key to distribute and rotate.
-- [ ] Granularity: encrypt each value separately (needs `ValueEncrypted` or an `enc:v1:<keyId>:<base64>` string, per-value AAD and a separate seal) or encrypt all values of an environment as one block (`values.<env>.enc`; no `ValueEncrypted` and no seal, but values move out of the schema and diffs show only that the block changed).
-- [ ] Symmetric vs asymmetric keys: with symmetric keys anyone who can add a secret can also read it; with asymmetric keys anyone with the public key can forge values, so signatures are needed.
-- [ ] How keys are identified (`keyId`), stored and delivered to the CLI and the init container.
-- [ ] Rollback protection: where the trusted "latest version" comes from (`DOTJSON_MIN_VERSION` in the deployment, a pinned signed tag, state on a volume, `expiresAt`).
-- [ ] Shared `value` of a secret: it is expanded per environment and encrypted with each environment key; how to handle adding a new environment and keeping the copies in sync.
+### Committed file vs working file
 
-- [ ] Bind each encrypted value to its context with AES-GCM associated data (AAD): `JSON.stringify(["dotjson/1", name, environment, sensitivity, exposure])`.
-  - Swapping ciphertexts between variables or editing `sensitivity`/`exposure` makes decryption fail.
-  - Encode the AAD unambiguously (a JSON array, not `a:b:c` concatenation); `"dotjson/1"` is the format version.
-  - Renaming a variable or changing its `sensitivity`/`exposure` requires re-encrypting the value, so only holders of that environment's key can do it.
-- [ ] Per-environment seal, authenticated with the environment key:
+- [ ] Two forms of the config:
+  - **Committed file** (in git): the schema (variables keyed by name, metadata only, no values) plus one encrypted block per environment holding **all** values of that environment, public and secret.
+  - **Working file** (in `.gitignore`): the unpacked form for one environment. Non-secret values are decrypted and placed into the schema; secret values stay in the block and are marked in the schema as `{ kind: "encrypted", state: "encrypted" }`.
+- [ ] One block per environment, each encrypted with its own environment key:
   ```ts
-  seals?: Partial<Record<Environment, {
-    version: number;    // incremented on every change to the environment
-    expiresAt?: string; // the seal is invalid after this date
-    mac: string;        // HMAC(env key, version + expiresAt + names and hashes of all values in the environment)
-  }>>;
+  blocks: {
+    development: "enc:v1:<keyId>:<base64>",
+    production:  "enc:v1:<keyId>:<base64>",
+  }
   ```
-  - Detects removed variables and encrypted values replaced with plaintext, which AAD alone does not catch.
-  - Provides the version counter for rollback protection.
+  - Unpacking for an environment decrypts only that environment's block; the other blocks stay untouched.
+  - AES-GCM over the whole block protects every value of the environment: values cannot be swapped, removed or replaced with plaintext without the environment key.
+  - AAD of each block: `JSON.stringify(["dotjson/1", environment])`, so a block cannot be moved to another environment.
+- [ ] A git hook builds the committed file from the working file. The working file never reaches git because it is ignored.
+- [ ] The committed file must always be committed on its own: the hook rejects a commit that contains it together with other files.
+- [ ] Re-encrypt a block only if its content changed (compare with the decrypted block from `HEAD`), so unchanged blocks keep the same ciphertext and do not show up in diffs.
+
+### Adding a value by hand
+
+- [ ] In the working file a new secret is written as
+  ```ts
+  { kind: "encrypted", state: "pending", valueToEncrypt: "token to encrypt" }
+  ```
+  On the next run the utility moves the value into the block and replaces the entry with `{ kind: "encrypted", state: "encrypted" }`.
+- [ ] If the key for that environment is missing, the utility removes the plaintext value and fails with an error.
+- [ ] `state` is required (no default), so a missing field is never treated as plaintext:
+  ```ts
+  type ValueEncrypted =
+    | { kind: "encrypted"; state: "encrypted" }               // the value is in the block
+    | { kind: "encrypted"; state: "pending"; value: string }; // encrypted on the next run
+  ```
+
+### Integrity checks
+
+- [ ] Each block stores a copy of `sensitivity` and `exposure` for every variable; on load they are compared with the schema and a mismatch is an error. This stops editing a secret's `exposure`/`sensitivity` in the plaintext schema without the environment key.
+- [ ] If the set of variables in the schema and in a block differ, show a warning and ask the user what to do. In non-interactive mode (CI, init container) this is an error.
+
+### Open questions
+
+- [ ] Asymmetric keys (preferred direction): encrypt with an environment's public key, decrypt only with its private key, so people can add secrets without being able to read them. Anyone with the public key can then forge values, so blocks must also be signed.
+- [ ] How keys are identified (`keyId`), stored and delivered to the CLI and the init container.
+- [ ] Rollback protection: store a `version` counter inside each block; decide where the trusted "latest version" comes from (`DOTJSON_MIN_VERSION` in the deployment, a pinned signed tag, state on a volume, `expiresAt`).
+- [ ] Shared `value` of a secret: it is expanded per environment and encrypted into each environment's block; how to handle adding a new environment and keeping the copies in sync.
+- [ ] Storage of the encrypted blocks is configurable; git is one option, not a requirement (see also "Download config from alternative resources" under Utility). **MVP: git only**, with blocks stored inline in the committed file; other backends and references come after the MVP. Think this through carefully:
+  - the schema and the blocks can be stored separately: instead of an inline block, the config holds a reference to where the block lives, e.g.
+    ```ts
+    blocks: {
+      development: "enc:v1:<keyId>:<base64>",                                      // inline
+      production:  { ref: "s3://bucket/app/production.enc", version: "<version or hash>" }, // stored elsewhere
+    }
+    ```
+  - which backends: git, object storage (S3, GCS), a secret manager, plain HTTP;
+  - git gives history, audit (who changed what), review and access control for free; other backends must provide them or the features are lost;
+  - if the schema stays in git and the blocks live elsewhere, they can get out of sync: the schema must reference the exact block version it was built with;
+  - where rollback protection and the trusted "latest version" come from for each backend;
+  - how the hook, the "commit the file on its own" rule and the init container work when the blocks are not in git.
 
 ## Types
 
