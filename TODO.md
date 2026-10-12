@@ -42,7 +42,7 @@ Taking all decisions into account, the validator needs to check:
   - **Working file** (in `.gitignore`): the unpacked form for one environment. Non-secret values are decrypted and placed into the schema; secret values stay in the block and are marked in the schema as `{ kind: "encrypted", state: "encrypted" }`.
 - [ ] One block per environment, each encrypted with its own environment key:
   ```ts
-  blocks: {
+  blob: {
     development: "enc:v1:<keyId>:<base64>",
     production:  "enc:v1:<keyId>:<base64>",
   }
@@ -83,7 +83,7 @@ Taking all decisions into account, the validator needs to check:
 - [ ] Storage of the encrypted blocks is configurable; git is one option, not a requirement (see also "Download config from alternative resources" under Utility). **MVP: git only**, with blocks stored inline in the committed file; other backends and references come after the MVP. Think this through carefully:
   - the schema and the blocks can be stored separately: instead of an inline block, the config holds a reference to where the block lives, e.g.
     ```ts
-    blocks: {
+    blob: {
       development: "enc:v1:<keyId>:<base64>",                                      // inline
       production:  { ref: "s3://bucket/app/production.enc", version: "<version or hash>" }, // stored elsewhere
     }
@@ -139,3 +139,27 @@ type VarType =
 export type VarType =
   | { kind: "string"; minLength?: number; maxLength?: number; pattern?: string; startsWith?: string } // pattern follows JS RegExp syntax, must match the whole value, "u" flag
 ```
+- [ ] **After MVP:** turn `environments` into a record of per-environment settings. `environments` says how and where; `blob` holds what (the inline block, or the pinned hash of a block stored elsewhere).
+```Typescript
+type EnvironmentSettings = {
+  protected?: boolean;  // plaintext secrets forbidden, interactive prompts disabled
+  storage?:             // where the encrypted block lives; inline in `blob` by default
+    | { kind: "inline" }
+    | { kind: "s3"; bucket: string; path: string };
+  keyId?: string;       // default key for this environment
+};
+
+type Configuration<Environment extends string> = {
+  version: 1;
+  environments: Record<Environment, EnvironmentSettings>;
+  variables: Record<string, Variable<Environment>>;
+  blob?: Partial<Record<Environment,
+    | string                    // inline: "enc:v1:<keyId>:<base64>"
+    | { sha256: string }        // stored elsewhere: pinned hash of the exact block
+  >>;
+};
+```
+  - Duplicate environments become impossible, so the "`environments` has no duplicates" check is no longer needed.
+  - `protected` tells the validator which environments must never have plaintext secrets.
+  - Breaking change (`string[]` → record); the environment type becomes `keyof typeof environments`.
+  - `storage` lives in the plaintext schema and can be redirected; the hash in `blob` stops an old or foreign block from being loaded.

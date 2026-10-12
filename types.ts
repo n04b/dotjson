@@ -62,4 +62,8 @@ export type Configuration<Environment extends string> = {
   version: 1;
   environments: readonly Environment[];
   variables: Record<string, Variable<Environment>>; // keyed by variable name
+
+  // Encrypted values, one block per environment, each encrypted with that environment's key
+  // Format: "enc:v1:<keyId>:<base64>"
+  blob?: Partial<Record<Environment, string>>;
 };

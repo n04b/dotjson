@@ -74,6 +74,7 @@ export const config: Configuration<Env> = {
 | `version` | Schema version, currently `1` |
 | `environments` | All environment names, e.g. `["development", "production"]` |
 | `variables` | Variable definitions keyed by variable name |
+| `blob` | Encrypted values, one block per environment: `{ production: "enc:v1:<keyId>:<base64>", ... }`. Each block is encrypted with its environment's key (see [Encryption](#encryption-planned)) |
 
 ## Variable
 
